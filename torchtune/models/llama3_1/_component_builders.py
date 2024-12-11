@@ -11,9 +11,9 @@ from torch import nn
 from torchtune.models.llama3._model_utils import scale_hidden_dim_for_mlp
 from torchtune.models.llama3_1._position_embeddings import Llama3ScaledRoPE
 from torchtune.modules import (
-    MultiHeadAttention,
     FeedForward,
     FrozenNF4Linear,
+    MultiHeadAttention,
     RMSNorm,
     TransformerDecoder,
     TransformerSelfAttentionLayer,
@@ -37,6 +37,7 @@ the building blocks simple.
 
 
 # ------------------ Vanilla Llama3.1 ------------------
+
 
 def llama3_1(
     vocab_size: int,
@@ -82,7 +83,9 @@ def llama3_1(
     """
     head_dim = embed_dim // num_heads
     num_kv_heads = num_kv_heads if num_kv_heads else num_heads
-    rope = Llama3ScaledRoPE(dim=head_dim, max_seq_len=max_seq_len, base=rope_base, scale_factor=scale_factor)
+    rope = Llama3ScaledRoPE(
+        dim=head_dim, max_seq_len=max_seq_len, base=rope_base, scale_factor=scale_factor
+    )
     layers = []
     for _ in range(num_layers):
         self_attn = MultiHeadAttention(
@@ -98,7 +101,11 @@ def llama3_1(
             max_seq_len=max_seq_len,
             attn_dropout=attn_dropout,
         )
-        hidden_dim = intermediate_dim if intermediate_dim else scale_hidden_dim_for_mlp(embed_dim)
+        hidden_dim = (
+            intermediate_dim
+            if intermediate_dim
+            else scale_hidden_dim_for_mlp(embed_dim)
+        )
         mlp = llama3_mlp(dim=embed_dim, hidden_dim=hidden_dim)
         layer = TransformerSelfAttentionLayer(
             attn=self_attn,
@@ -121,15 +128,27 @@ def llama3_1(
         output=output_proj,
     )
 
+
 def llama3_mlp(dim: int, hidden_dim: int, quantize_base: bool = False) -> FeedForward:
     """
     Build the MLP layer associated with the Llama model.
     """
-    gate_proj = nn.Linear(dim, hidden_dim, bias=False) if not quantize_base else FrozenNF4Linear(dim, hidden_dim, bias=False)
-    down_proj = nn.Linear(hidden_dim, dim, bias=False) if not quantize_base else FrozenNF4Linear(hidden_dim, dim, bias=False)
-    up_proj = nn.Linear(dim, hidden_dim, bias=False) if not quantize_base else FrozenNF4Linear(dim, hidden_dim, bias=False)
+    gate_proj = (
+        nn.Linear(dim, hidden_dim, bias=False)
+        if not quantize_base
+        else FrozenNF4Linear(dim, hidden_dim, bias=False)
+    )
+    down_proj = (
+        nn.Linear(hidden_dim, dim, bias=False)
+        if not quantize_base
+        else FrozenNF4Linear(hidden_dim, dim, bias=False)
+    )
+    up_proj = (
+        nn.Linear(dim, hidden_dim, bias=False)
+        if not quantize_base
+        else FrozenNF4Linear(dim, hidden_dim, bias=False)
+    )
     return FeedForward(gate_proj=gate_proj, down_proj=down_proj, up_proj=up_proj)
-
 
 
 # ------------------ LoRA Llama3.1 ------------------
@@ -203,9 +222,13 @@ def lora_llama3_1(
 
     """
 
-    hidden_dim = intermediate_dim if intermediate_dim else scale_hidden_dim_for_mlp(embed_dim)
+    hidden_dim = (
+        intermediate_dim if intermediate_dim else scale_hidden_dim_for_mlp(embed_dim)
+    )
     head_dim = embed_dim // num_heads
-    rope = Llama3ScaledRoPE(dim=head_dim, max_seq_len=max_seq_len, base=rope_base, scale_factor=scale_factor)
+    rope = Llama3ScaledRoPE(
+        dim=head_dim, max_seq_len=max_seq_len, base=rope_base, scale_factor=scale_factor
+    )
     layers = []
     for _ in range(num_layers):
         self_attn = lora_llama3_attention(
@@ -235,7 +258,9 @@ def lora_llama3_1(
                 use_dora=use_dora,
             )
         else:
-            mlp = llama3_mlp(dim=embed_dim, hidden_dim=hidden_dim, quantize_base=quantize_base)
+            mlp = llama3_mlp(
+                dim=embed_dim, hidden_dim=hidden_dim, quantize_base=quantize_base
+            )
 
         layer = TransformerSelfAttentionLayer(
             attn=self_attn,
@@ -250,7 +275,14 @@ def lora_llama3_1(
     # TODO: quantize_base is not applied to final output_proj currently.
     adapter_cls = DoRALinear if use_dora else LoRALinear
     output_proj = (
-        adapter_cls(embed_dim, vocab_size, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
+        adapter_cls(
+            embed_dim,
+            vocab_size,
+            rank=lora_rank,
+            alpha=lora_alpha,
+            dropout=lora_dropout,
+            quantization=quantize_base,
+        )
         if apply_lora_to_output
         else nn.Linear(embed_dim, vocab_size, bias=False)
     )
