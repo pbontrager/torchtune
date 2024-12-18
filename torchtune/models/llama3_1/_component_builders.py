@@ -272,20 +272,20 @@ def lora_llama3_1(
     layers = nn.ModuleList(layers)
     tok_embeddings = nn.Embedding(vocab_size, embed_dim)
 
-    # TODO: quantize_base is not applied to final output_proj currently.
     adapter_cls = DoRALinear if use_dora else LoRALinear
-    output_proj = (
-        adapter_cls(
+    if apply_lora_to_output:
+        output_proj = adapter_cls(
             embed_dim,
             vocab_size,
             rank=lora_rank,
             alpha=lora_alpha,
             dropout=lora_dropout,
-            quantization=quantize_base,
+            quantize_base=quantize_base,
         )
-        if apply_lora_to_output
-        else nn.Linear(embed_dim, vocab_size, bias=False)
-    )
+    elif quantize_base:
+        output_proj = FrozenNF4Linear(embed_dim, vocab_size, bias=False)
+    else:
+        output_proj = nn.Linear(embed_dim, vocab_size, bias=False)
     model = TransformerDecoder(
         tok_embeddings=tok_embeddings,
         layers=layers,
